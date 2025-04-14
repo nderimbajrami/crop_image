@@ -182,13 +182,15 @@ class _CropImageState extends State<CropImage> {
   var currentCrop = Rect.zero;
   var size = Size.zero;
   _TouchPoint? panStart;
+  double? _baseScaleFactor;
+  Offset? _lastFocalPoint;
 
   Map<_CornerTypes, Offset> get gridCorners => <_CornerTypes, Offset>{
-        _CornerTypes.UpperLeft: controller.crop.topLeft.scale(size.width, size.height).translate(widget.paddingSize, widget.paddingSize),
-        _CornerTypes.UpperRight: controller.crop.topRight.scale(size.width, size.height).translate(widget.paddingSize, widget.paddingSize),
-        _CornerTypes.LowerRight: controller.crop.bottomRight.scale(size.width, size.height).translate(widget.paddingSize, widget.paddingSize),
-        _CornerTypes.LowerLeft: controller.crop.bottomLeft.scale(size.width, size.height).translate(widget.paddingSize, widget.paddingSize),
-      };
+    _CornerTypes.UpperLeft: controller.crop.topLeft.scale(size.width, size.height).translate(widget.paddingSize, widget.paddingSize),
+    _CornerTypes.UpperRight: controller.crop.topRight.scale(size.width, size.height).translate(widget.paddingSize, widget.paddingSize),
+    _CornerTypes.LowerRight: controller.crop.bottomRight.scale(size.width, size.height).translate(widget.paddingSize, widget.paddingSize),
+    _CornerTypes.LowerLeft: controller.crop.bottomLeft.scale(size.width, size.height).translate(widget.paddingSize, widget.paddingSize),
+  };
 
   @override
   void initState() {
@@ -255,96 +257,108 @@ class _CropImageState extends State<CropImage> {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints constraints) {
-            if (controller.getImage() == null) {
-              return widget.loadingPlaceholder;
-            }
-            // we remove the borders
-            final double maxWidth = constraints.maxWidth - 2 * widget.paddingSize;
-            final double maxHeight = constraints.maxHeight - 2 * widget.paddingSize;
-            final double width = _getWidth(maxWidth, maxHeight);
-            final double height = _getHeight(maxWidth, maxHeight);
-            size = Size(width, height);
-            final bool showCorners = widget.showCorners && widget.minimumImageSize != widget.maximumImageSize;
-            return Stack(
-              alignment: Alignment.center,
-              children: <Widget>[
-                SizedBox(
-                  width: width,
-                  height: height,
-                  child: CustomPaint(
-                    painter: _RotatedImagePainter(
-                      controller.getImage()!,
-                      controller.rotation,
-                    ),
-                  ),
+    child: LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        if (controller.getImage() == null) {
+          return widget.loadingPlaceholder;
+        }
+        final double maxWidth = constraints.maxWidth - 2 * widget.paddingSize;
+        final double maxHeight = constraints.maxHeight - 2 * widget.paddingSize;
+        final double width = _getWidth(maxWidth, maxHeight);
+        final double height = _getHeight(maxWidth, maxHeight);
+        size = Size(width, height);
+        final bool showCorners = widget.showCorners && widget.minimumImageSize != widget.maximumImageSize;
+        return Stack(
+          alignment: Alignment.center,
+          children: <Widget>[
+            SizedBox(
+              width: width,
+              height: height,
+              child: CustomPaint(
+                painter: _RotatedImagePainter(
+                  controller.getImage()!,
+                  controller.rotation,
+                  controller.zoom,
                 ),
-                if (widget.overlayPainter != null)
-                  SizedBox(
-                    width: width,
-                    height: height,
-                    child: CustomPaint(painter: widget.overlayPainter),
-                  ),
-                SizedBox(
-                  width: width + 2 * widget.paddingSize,
-                  height: height + 2 * widget.paddingSize,
-                  child: GestureDetector(
-                    onPanStart: onPanStart,
-                    onPanUpdate: onPanUpdate,
-                    onPanEnd: onPanEnd,
-                    child: CropGrid(
-                      crop: currentCrop,
-                      gridColor: widget.gridColor,
-                      gridInnerColor: widget.gridInnerColor,
-                      gridCornerColor: widget.gridCornerColor,
-                      paddingSize: widget.paddingSize,
-                      cornerSize: showCorners ? widget.gridCornerSize : 0,
-                      thinWidth: widget.gridThinWidth,
-                      thickWidth: widget.gridThickWidth,
-                      scrimColor: widget.scrimColor,
-                      showCorners: showCorners,
-                      alwaysShowThirdLines: widget.alwaysShowThirdLines,
-                      isMoving: panStart != null,
-                      onSize: (size) {
-                        this.size = size;
-                      },
-                    ),
-                  ),
+              ),
+            ),
+            if (widget.overlayPainter != null)
+              SizedBox(
+                width: width,
+                height: height,
+                child: CustomPaint(painter: widget.overlayPainter),
+              ),
+            SizedBox(
+              width: width + 2 * widget.paddingSize,
+              height: height + 2 * widget.paddingSize,
+              child: GestureDetector(
+                onScaleStart: onScaleStart,
+                onScaleUpdate: onScaleUpdate,
+                onScaleEnd: onScaleEnd,
+                child: CropGrid(
+                  crop: currentCrop,
+                  gridColor: widget.gridColor,
+                  gridInnerColor: widget.gridInnerColor,
+                  gridCornerColor: widget.gridCornerColor,
+                  paddingSize: widget.paddingSize,
+                  cornerSize: showCorners ? widget.gridCornerSize : 0,
+                  thinWidth: widget.gridThinWidth,
+                  thickWidth: widget.gridThickWidth,
+                  scrimColor: widget.scrimColor,
+                  showCorners: showCorners,
+                  alwaysShowThirdLines: widget.alwaysShowThirdLines,
+                  isMoving: panStart != null,
+                  onSize: (size) {
+                    this.size = size;
+                  },
+                  zoom: controller.zoom,
                 ),
-              ],
-            );
-          },
-        ),
-      );
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+  );
 
-  void onPanStart(DragStartDetails details) {
-    if (panStart == null) {
-      final type = hitTest(details.localPosition);
-      if (type != _CornerTypes.None) {
-        var basePoint = gridCorners[(type == _CornerTypes.Move) ? _CornerTypes.UpperLeft : type]!;
-        setState(() {
-          panStart = _TouchPoint(type, details.localPosition - basePoint);
-        });
-      }
+  void onScaleStart(ScaleStartDetails details) {
+    _baseScaleFactor = controller.zoom;
+    _lastFocalPoint = details.localFocalPoint;
+    final type = hitTest(details.localFocalPoint);
+    if (type != _CornerTypes.None) {
+      var basePoint = gridCorners[(type == _CornerTypes.Move) ? _CornerTypes.UpperLeft : type]!;
+      setState(() {
+        panStart = _TouchPoint(type, details.localFocalPoint - basePoint);
+      });
     }
   }
 
-  void onPanUpdate(DragUpdateDetails details) {
-    if (panStart != null) {
-      final offset = details.localPosition - panStart!.offset - Offset(widget.paddingSize, widget.paddingSize);
-      if (panStart!.type == _CornerTypes.Move) {
-        moveArea(offset);
-      } else {
-        moveCorner(panStart!.type, offset);
-      }
-      widget.onCrop?.call(controller.crop);
+  void onScaleUpdate(ScaleUpdateDetails details) {
+    // Handle zoom
+    if (_baseScaleFactor != null && details.scale != 1.0) {
+      controller.zoom = (_baseScaleFactor! * details.scale).clamp(controller.minZoom, controller.maxZoom);
     }
+
+    // Handle pan
+    if (_lastFocalPoint != null) {
+      final delta = details.localFocalPoint - _lastFocalPoint!;
+      if (panStart != null) {
+        if (panStart!.type == _CornerTypes.Move) {
+          moveArea(delta);
+        } else {
+          moveCorner(panStart!.type, details.localFocalPoint - panStart!.offset - Offset(widget.paddingSize, widget.paddingSize));
+        }
+        widget.onCrop?.call(controller.crop);
+      }
+    }
+    _lastFocalPoint = details.localFocalPoint;
   }
 
-  void onPanEnd(DragEndDetails details) {
+  void onScaleEnd(ScaleEndDetails details) {
     setState(() {
       panStart = null;
+      _baseScaleFactor = null;
+      _lastFocalPoint = null;
     });
   }
 
@@ -355,6 +369,7 @@ class _CropImageState extends State<CropImage> {
   }
 
   _CornerTypes hitTest(Offset point) {
+    // First check corners
     for (final gridCorner in gridCorners.entries) {
       final area = Rect.fromCenter(center: gridCorner.value, width: widget.touchSize, height: widget.touchSize);
       if (area.contains(point)) {
@@ -366,18 +381,69 @@ class _CropImageState extends State<CropImage> {
       return _CornerTypes.Move;
     }
 
-    final area = Rect.fromPoints(gridCorners[_CornerTypes.UpperLeft]!, gridCorners[_CornerTypes.LowerRight]!);
-    return area.contains(point) ? _CornerTypes.Move : _CornerTypes.None;
+    // Get the current crop area in screen coordinates
+    final cropArea = Rect.fromPoints(
+        gridCorners[_CornerTypes.UpperLeft]!,
+        gridCorners[_CornerTypes.LowerRight]!
+    );
+
+    // Calculate zoomed dimensions
+    final currentZoom = controller.zoom;
+    final zoomedWidth = size.width * currentZoom;
+    final zoomedHeight = size.height * currentZoom;
+
+    // Calculate the zoom offsets
+    final zoomOffsetX = (zoomedWidth - size.width) / 2;
+    final zoomOffsetY = (zoomedHeight - size.height) / 2;
+
+    // Adjust the crop area based on zoom
+    final zoomedCropArea = Rect.fromLTWH(
+        cropArea.left * currentZoom - zoomOffsetX,
+        cropArea.top * currentZoom - zoomOffsetY,
+        cropArea.width * currentZoom,
+        cropArea.height * currentZoom
+    );
+
+    // Check if the point is within the zoomed crop area
+    if (zoomedCropArea.contains(point)) {
+      return _CornerTypes.Move;
+    }
+
+    return _CornerTypes.None;
   }
 
-  void moveArea(Offset point) {
+  void moveArea(Offset delta) {
     final crop = controller.crop.multiply(size);
+    final currentZoom = controller.zoom;
+
+    // Calculate the zoomed dimensions
+    final zoomedWidth = size.width * currentZoom;
+    final zoomedHeight = size.height * currentZoom;
+
+    // Calculate the maximum bounds considering zoom
+    final maxX = (zoomedWidth - size.width) / 2;
+    final maxY = (zoomedHeight - size.height) / 2;
+
+    // Adjust delta based on zoom level
+    final adjustedDelta = Offset(
+        delta.dx / currentZoom,
+        delta.dy / currentZoom
+    );
+
+    // Calculate new positions
+    final newLeft = crop.left + adjustedDelta.dx;
+    final newTop = crop.top + adjustedDelta.dy;
+
+    // Constrain the crop area to stay within the zoomed image boundaries
+    final constrainedLeft = newLeft.clamp(-maxX, size.width - crop.width + maxX);
+    final constrainedTop = newTop.clamp(-maxY, size.height - crop.height + maxY);
+
     controller.crop = Rect.fromLTWH(
-      point.dx.clamp(0, size.width - crop.width),
-      point.dy.clamp(0, size.height - crop.height),
-      crop.width,
-      crop.height,
-    ).divide(size);
+      constrainedLeft / size.width,
+      constrainedTop / size.height,
+      crop.width / size.width,
+      crop.height / size.height,
+    );
   }
 
   void moveCorner(_CornerTypes type, Offset point) {
@@ -386,63 +452,47 @@ class _CropImageState extends State<CropImage> {
     var top = crop.top;
     var right = crop.right;
     var bottom = crop.bottom;
-    double minX, maxX;
-    double minY, maxY;
+
+    final zoomedWidth = size.width * controller.zoom;
+    final zoomedHeight = size.height * controller.zoom;
 
     switch (type) {
       case _CornerTypes.UpperLeft:
-        minX = math.max(0, right - widget.maximumImageSize);
-        maxX = right - widget.minimumImageSize;
-        if (minX <= maxX) {
-          left = point.dx.clamp(minX, maxX);
-        }
-        minY = math.max(0, bottom - widget.maximumImageSize);
-        maxY = bottom - widget.minimumImageSize;
-        if (minY <= maxY) {
-          top = point.dy.clamp(minY, maxY);
-        }
+        left = point.dx;
+        top = point.dy;
         break;
       case _CornerTypes.UpperRight:
-        minX = left + widget.minimumImageSize;
-        maxX = math.min(left + widget.maximumImageSize, size.width);
-        if (minX <= maxX) {
-          right = point.dx.clamp(minX, maxX);
-        }
-        minY = math.max(0, bottom - widget.maximumImageSize);
-        maxY = bottom - widget.minimumImageSize;
-        if (minY <= maxY) {
-          top = point.dy.clamp(minY, maxY);
-        }
+        right = point.dx;
+        top = point.dy;
         break;
       case _CornerTypes.LowerRight:
-        minX = left + widget.minimumImageSize;
-        maxX = math.min(left + widget.maximumImageSize, size.width);
-        if (minX <= maxX) {
-          right = point.dx.clamp(minX, maxX);
-        }
-        minY = top + widget.minimumImageSize;
-        maxY = math.min(top + widget.maximumImageSize, size.height);
-        if (minY <= maxY) {
-          bottom = point.dy.clamp(minY, maxY);
-        }
+        right = point.dx;
+        bottom = point.dy;
         break;
       case _CornerTypes.LowerLeft:
-        minX = math.max(0, right - widget.maximumImageSize);
-        maxX = right - widget.minimumImageSize;
-        if (minX <= maxX) {
-          left = point.dx.clamp(minX, maxX);
-        }
-        minY = top + widget.minimumImageSize;
-        maxY = math.min(top + widget.maximumImageSize, size.height);
-        if (minY <= maxY) {
-          bottom = point.dy.clamp(minY, maxY);
-        }
+        left = point.dx;
+        bottom = point.dy;
         break;
       default:
         assert(false);
     }
 
-    //FIXME: does not work with non-straight "rotation"
+    if (right - left < widget.minimumImageSize) {
+      if (type == _CornerTypes.UpperLeft || type == _CornerTypes.LowerLeft) {
+        left = right - widget.minimumImageSize;
+      } else {
+        right = left + widget.minimumImageSize;
+      }
+    }
+
+    if (bottom - top < widget.minimumImageSize) {
+      if (type == _CornerTypes.UpperLeft || type == _CornerTypes.UpperRight) {
+        top = bottom - widget.minimumImageSize;
+      } else {
+        bottom = top + widget.minimumImageSize;
+      }
+    }
+
     if (controller.aspectRatio != null) {
       final width = right - left;
       final height = bottom - top;
@@ -488,17 +538,18 @@ class _TouchPoint {
 
 // FIXME: shouldn't be repainted each time the grid moves, should it?
 class _RotatedImagePainter extends CustomPainter {
-  _RotatedImagePainter(this.image, this.rotation);
+  _RotatedImagePainter(this.image, this.rotation, this.zoom);
 
   final ui.Image image;
   final CropRotation rotation;
+  final double zoom;
 
   final Paint _paint = Paint();
 
   @override
   void paint(Canvas canvas, Size size) {
-    double targetWidth = size.width;
-    double targetHeight = size.height;
+    double targetWidth = size.width * zoom;
+    double targetHeight = size.height * zoom;
     double offset = 0;
     if (rotation != CropRotation.up) {
       if (rotation.isSideways) {
@@ -511,15 +562,25 @@ class _RotatedImagePainter extends CustomPainter {
         }
       }
       canvas.save();
-      canvas.translate(targetWidth / 2, targetHeight / 2);
+      canvas.translate(size.width / 2, size.height / 2);
       canvas.rotate(rotation.radians);
       canvas.translate(-targetWidth / 2, -targetHeight / 2);
     }
     _paint.filterQuality = FilterQuality.high;
+
+    // Calculate the zoom offset to keep the image centered
+    final double zoomOffsetX = (targetWidth - size.width) / 2;
+    final double zoomOffsetY = (targetHeight - size.height) / 2;
+
     canvas.drawImageRect(
       image,
       Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      Rect.fromLTWH(offset, offset, targetWidth, targetHeight),
+      Rect.fromLTWH(
+        offset - zoomOffsetX,
+        offset - zoomOffsetY,
+        targetWidth,
+        targetHeight,
+      ),
       _paint,
     );
     if (rotation != CropRotation.up) {
@@ -528,5 +589,5 @@ class _RotatedImagePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
+  bool shouldRepaint(CustomPainter oldDelegate) => true;
 }

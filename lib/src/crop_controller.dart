@@ -25,6 +25,9 @@ class CropController extends ValueNotifier<CropControllerValue> {
         value.crop,
         value.rotation,
         value.minimumImageSize,
+        value.minZoom,
+        value.maxZoom,
+        value.zoom,
       );
     }
     notifyListeners();
@@ -74,6 +77,9 @@ class CropController extends ValueNotifier<CropControllerValue> {
       ),
       newRotation,
       value.minimumImageSize,
+      value.minZoom,
+      value.maxZoom,
+      value.zoom,
     );
     notifyListeners();
   }
@@ -108,6 +114,35 @@ class CropController extends ValueNotifier<CropControllerValue> {
 
   ui.Image? getImage() => _bitmap;
 
+  /// Current zoom level of the image
+  double get zoom => value.zoom;
+
+  set zoom(double newZoom) {
+    value = value.copyWith(zoom: newZoom);
+    notifyListeners();
+  }
+
+  /// Minimum zoom level allowed
+  double get minZoom => value.minZoom;
+
+  /// Maximum zoom level allowed
+  double get maxZoom => value.maxZoom;
+
+  /// Resets the zoom level to 1.0
+  void resetZoom() {
+    zoom = 1.0;
+  }
+
+  /// Zooms in by the specified factor
+  void zoomIn([double factor = 1.2]) {
+    zoom = (zoom * factor).clamp(minZoom, maxZoom);
+  }
+
+  /// Zooms out by the specified factor
+  void zoomOut([double factor = 1.2]) {
+    zoom = (zoom / factor).clamp(minZoom, maxZoom);
+  }
+
   /// A controller for a [CropImage] widget.
   ///
   /// You can provide the required [aspectRatio] and the initial [defaultCrop].
@@ -120,6 +155,9 @@ class CropController extends ValueNotifier<CropControllerValue> {
     Rect defaultCrop = const Rect.fromLTWH(0, 0, 1, 1),
     CropRotation rotation = CropRotation.up,
     double minimumImageSize = 100,
+    double minZoom = 1.0,
+    double maxZoom = 3.0,
+    double initialZoom = 1.0,
   })  : assert(aspectRatio != 0, 'aspectRatio cannot be zero'),
         assert(defaultCrop.left >= 0 && defaultCrop.left <= 1, 'left should be 0..1'),
         assert(defaultCrop.right >= 0 && defaultCrop.right <= 1, 'right should be 0..1'),
@@ -127,21 +165,27 @@ class CropController extends ValueNotifier<CropControllerValue> {
         assert(defaultCrop.bottom >= 0 && defaultCrop.bottom <= 1, 'bottom should be 0..1'),
         assert(defaultCrop.left < defaultCrop.right, 'left must be less than right'),
         assert(defaultCrop.top < defaultCrop.bottom, 'top must be less than bottom'),
+        assert(minZoom > 0, 'minZoom must be greater than 0'),
+        assert(maxZoom >= minZoom, 'maxZoom must be greater than or equal to minZoom'),
+        assert(initialZoom >= minZoom && initialZoom <= maxZoom, 'initialZoom must be between minZoom and maxZoom'),
         super(CropControllerValue(
-          aspectRatio,
-          defaultCrop,
-          rotation,
-          minimumImageSize,
-        ));
+        aspectRatio,
+        defaultCrop,
+        rotation,
+        minimumImageSize,
+        minZoom,
+        maxZoom,
+        initialZoom,
+      ));
 
   /// Creates a controller for a [CropImage] widget from an initial [CropControllerValue].
-  CropController.fromValue(super.value);
+  CropController.fromValue(CropControllerValue value) : super(value);
 
   Rect _adjustRatio(
-    Rect crop,
-    double? aspectRatio, {
-    CropRotation? rotation,
-  }) {
+      Rect crop,
+      double? aspectRatio, {
+        CropRotation? rotation,
+      }) {
     if (aspectRatio == null) {
       return crop;
     }
@@ -288,9 +332,9 @@ class CropController extends ValueNotifier<CropControllerValue> {
 
     //FIXME Picture.toImage() crashes on Flutter Web with the HTML renderer. Use CanvasKit or avoid this operation for now. https://github.com/flutter/engine/pull/20750
     return await pictureRecorder.endRecording().toImage(
-          outputWidth.round(),
-          outputHeight.round(),
-        );
+      outputWidth.round(),
+      outputHeight.round(),
+    );
   }
 
   /// Returns the image cropped with the current crop rectangle.
@@ -321,25 +365,37 @@ class CropControllerValue {
   final Rect crop;
   final CropRotation rotation;
   final double minimumImageSize;
+  final double minZoom;
+  final double maxZoom;
+  final double zoom;
 
   const CropControllerValue(
-    this.aspectRatio,
-    this.crop,
-    this.rotation,
-    this.minimumImageSize,
-  );
+      this.aspectRatio,
+      this.crop,
+      this.rotation,
+      this.minimumImageSize,
+      this.minZoom,
+      this.maxZoom,
+      this.zoom,
+      );
 
   CropControllerValue copyWith({
     double? aspectRatio,
     Rect? crop,
     CropRotation? rotation,
     double? minimumImageSize,
+    double? minZoom,
+    double? maxZoom,
+    double? zoom,
   }) =>
       CropControllerValue(
         aspectRatio ?? this.aspectRatio,
         crop ?? this.crop,
         rotation ?? this.rotation,
         minimumImageSize ?? this.minimumImageSize,
+        minZoom ?? this.minZoom,
+        maxZoom ?? this.maxZoom,
+        zoom ?? this.zoom,
       );
 
   @override
@@ -347,16 +403,19 @@ class CropControllerValue {
     if (identical(this, other)) {
       return true;
     }
-    return other is CropControllerValue && other.aspectRatio == aspectRatio && other.crop == crop && other.rotation == rotation && other.minimumImageSize == minimumImageSize;
+    return other is CropControllerValue && other.aspectRatio == aspectRatio && other.crop == crop && other.rotation == rotation && other.minimumImageSize == minimumImageSize && other.minZoom == minZoom && other.maxZoom == maxZoom && other.zoom == zoom;
   }
 
   @override
   int get hashCode => Object.hash(
-        aspectRatio.hashCode,
-        crop.hashCode,
-        rotation.hashCode,
-        minimumImageSize.hashCode,
-      );
+    aspectRatio.hashCode,
+    crop.hashCode,
+    rotation.hashCode,
+    minimumImageSize.hashCode,
+    minZoom.hashCode,
+    maxZoom.hashCode,
+    zoom.hashCode,
+  );
 }
 
 /// Provides the given [ui.Image] object as an [Image].
@@ -383,9 +442,9 @@ class UiImageProvider extends ImageProvider<UiImageProvider> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is UiImageProvider && //
-          runtimeType == other.runtimeType &&
-          image == other.image;
+          other is UiImageProvider && //
+              runtimeType == other.runtimeType &&
+              image == other.image;
 
   @override
   int get hashCode => image.hashCode;
